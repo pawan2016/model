@@ -83,9 +83,11 @@ class Inventory_model extends CI_Model {
 		else
 		{
 		//$sql="SELECT office_master.*,regional_store_master.regional_store_type FROM regional_store_master join office_master ON regional_store_master.regional_store_id=office_master.regional_store_id and office_master.office_id!=$office_id and ((office_master.regional_store_id='".$regional_store_id."' and office_operation_type='showroom') or office_master.regional_store_id!='".$regional_store_id."' and office_operation_type='store')  order by office_master.office_id";
-			$sql="SELECT office_master.*,regional_store_master.regional_store_type FROM regional_store_master join office_master ON regional_store_master.regional_store_id=office_master.regional_store_id and office_master.office_id!=$office_id and ((office_master.regional_store_id='".$regional_store_id."' and office_operation_type='showroom') or  (office_operation_type='store'))  order by office_master.office_id";
+		
+		$sql="SELECT office_master.*,regional_store_master.regional_store_type FROM regional_store_master join office_master ON regional_store_master.regional_store_id=office_master.regional_store_id and office_master.office_id!=$office_id and ((office_master.regional_store_id='".$regional_store_id."' and office_operation_type='showroom') or  (office_operation_type='store'))  order by office_master.office_id";
 		
 		}
+		//echo $sql;
 		//Preventing SQL injection in Codeigniter using Query Binding Method
 		$res=$this->db->query($sql);
 		}
@@ -193,21 +195,58 @@ class Inventory_model extends CI_Model {
 		$res=$this->db->query($sql,array($office_id));
 		return $res->result();
 		} */
+		$tableNameSTOCKRECEIPTPro='inventory_'.$office_operation_type.'_stock_receipt_product_'.$office_id;	
+		 $this->db->select('tp.product_id,t.product_type_short_code,tp.stock_receipt_id')->from($tableNameSTOCKRECEIPTPro.' as tp');
+			 $this->db->join('product_master as p','tp.product_id=p.product_id','letf');
+			 $this->db->join('product_type_master as t','p.product_type_id=t.product_type_id','letf');
+			 $this->db->where('t.product_type_short_code =','SANCHI');
+			 $arr_pro_type=$this->db->get()->result();
 		
+		 $stock_receipt_id=array();
+		 foreach($arr_pro_type as $pro_data)
+		 {
+			$stock_receipt_id[]=$pro_data->stock_receipt_id;
+		 }
+		 $stock_receipt_id=array_unique($stock_receipt_id);
 		$this->db->select('rec_table.stock_transfer_number,rec_table.stock_receipt_number,rec_table.stock_transfer_date,rec_table.stock_transfer_status, rec_table.stock_receipt_id,ofc_mstr.office_name,ofc_mstr.office_address,ofc_mstr.city_id,rec_table.access_level_status,
 		ofc_mstr.district_id,ofc_mstr.state_id,rec_table.added_by')->from($tableNameSTOCKRECEIPT.' as rec_table');
 		$this->db->join('office_master as ofc_mstr','ofc_mstr.office_id=rec_table.stock_receipt_from');
 		$this->db->where(array('rec_table.createdOn >=' => $fromDate,'rec_table.createdOn <=' => $toDate));
+		if(count($stock_receipt_id)>0)
+		{
+			$this->db->where_not_in('stock_receipt_id',$stock_receipt_id);
+		}
 		$data = $this->db->get()->result();
 		return $data;
 		
 	}
 	public function _get_all_record_stock_transfer_details_to_by_join($tableNameSTOCKRECEIPT,$office_operation_type,$office_id,$fromDate,$toDate){
+		 $tableNameSTOCKTRANSPro='inventory_'.$office_operation_type.'_stock_transfer_product_'.$office_id;	
+			
 		
+		 
+		
+			 $this->db->select('tp.product_id,t.product_type_short_code,tp.stock_transfer_id')->from($tableNameSTOCKTRANSPro.' as tp');
+			 $this->db->join('product_master as p','tp.product_id=p.product_id','letf');
+			 $this->db->join('product_type_master as t','p.product_type_id=t.product_type_id','letf');
+			 $this->db->where('t.product_type_short_code =','SANCHI');
+			 $arr_pro_type=$this->db->get()->result();
+		
+		 $stock_trans_id=array();
+		 foreach($arr_pro_type as $pro_data)
+		 {
+			$stock_trans_id[]=$pro_data->stock_transfer_id;
+		 }
+		 $stock_trans_id=array_unique($stock_trans_id);
+	
 		$this->db->select('trans_table.stock_transfer_number,trans_table.stock_transfer_date,trans_table.stock_transfer_narration,trans_table.stock_transfer_status,trans_table.stock_transfer_id, ofc_mstr.office_name,ofc_mstr.office_address,ofc_mstr.city_id,trans_table.access_level_status,
 		ofc_mstr.district_id,ofc_mstr.state_id,trans_table.added_by')->from($tableNameSTOCKRECEIPT.' as trans_table');
 		$this->db->join('office_master as ofc_mstr','ofc_mstr.office_id=trans_table.stock_transfer_to_office_id');
 		$this->db->where(array('trans_table.createdOn >=' => $fromDate,'trans_table.createdOn <=' => $toDate));
+		if(count($stock_trans_id)>0)
+		{
+		$this->db->where_not_in('stock_transfer_id',$stock_trans_id);
+		}
 		$data = $this->db->get()->result();
 		
 		return $data;
@@ -348,7 +387,10 @@ public function _get_all_record_of_inventory_product_receipt_by_stock_transfer_i
 		$this->db->select('office_master.*,regional_store_master.regional_store_type')->from('office_master');
 		$this->db->join('regional_store_master','regional_store_master.regional_store_id=office_master.regional_store_id');
 		$this->db->where(array('office_operation_type'=>'showroom'));
+		if(!empty($regional_ids))
+		{
 		$this->db->where_in('regional_store_master.regional_store_id',$regional_ids);
+		}
 		$res=$this->db->get();
 		return $res->result();
 	}
