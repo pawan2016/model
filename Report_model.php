@@ -462,15 +462,16 @@ $data['query']=$this->db->last_query();
 			if($office_id == ''){
 				// $officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->join('regional_store_master as reg','om.regional_store_id=reg.regional_store_id')->where(array('om.office_operation_type'=>'showroom','reg.regional_store_type'=>'others'))->get()->result();
 				$user_id=$this->session->userdata('user_id');
-				$role_permission_id=$this->session->userdata('role_permission_id');
-				$office_id=$this->session->userdata('office_id');
-				$user_role_data=$this->db->get_where('user_role_permission_master',array('user_id'=>$user_id,'role_permission_id'=>$role_permission_id,'office_id'=>$office_id))->row();
-				$str_ext=array();
-				if(!empty($user_role_data) && $user_role_data->regional_store_id>0)
-				{
-					$str_ext=array('reg.regional_store_id'=>$user_role_data->regional_store_id);
-				}
+			$role_permission_id=$this->session->userdata('role_permission_id');
+			$office_id=$this->session->userdata('office_id');
+			$user_role_data=$this->db->get_where('user_role_permission_master',array('user_id'=>$user_id,'role_permission_id'=>$role_permission_id,'office_id'=>$office_id))->row();
+			$str_ext=array();
+			if(!empty($user_role_data) && $user_role_data->regional_store_id>0)
+			{
+				$str_ext=array('reg.regional_store_id'=>$user_role_data->regional_store_id);
+			}
 				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->join('regional_store_master as reg','om.regional_store_id=reg.regional_store_id')->where(array('om.office_id >'=>'1','reg.regional_store_type'=>'others'))->where($str_ext)->get()->result();
+				
 			}
 			else{
 				$officeDatas[] = (object)array('office_id'=>$office_id,'office_operation_type'=>getOfficeOperationType($office_id));
@@ -1102,13 +1103,18 @@ $data['query']=$this->db->last_query();
 		
 	public function _get_sold_and_inventory_report($reportDate,$fromDate,$toDate,$office_ids,$regional_ids)
 	{
-		
 		$date_where = array('createdOn >='=>$fromDate,'createdOn <='=>$toDate);
 		$his_date_where = array('his.createdOn >='=>$fromDate,'his.createdOn <='=>$toDate);
 		$in_date_where = array('inv.createdOn >='=>$fromDate,'inv.createdOn <='=>$toDate);
-		
 		if(empty($office_ids)){
-			$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where("office_id !=",1)->where_in('regional_store_id',$regional_ids)->get()->result();
+			if(empty($regional_ids))
+			{
+				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where("office_id !=",1)->get()->result();
+			}
+			else
+			{
+				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where("office_id !=",1)->where_in('regional_store_id',$regional_ids)->get()->result();
+			}
 		}
 		else{
 			$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where_in('office_id',$office_ids)->get()->result();
@@ -1117,8 +1123,10 @@ $data['query']=$this->db->last_query();
 		$ofcDatas = $officeDatas;
 		$totalCost = 0;
 		$date_where_one = " createdOn LIKE '".$reportDate."%'";
+	//	echo $date_where_one;
 		$in_date_where_one = " inv.createdOn LIKE '".$reportDate."%'";
-		
+		$report_Date = date( 'Y-m-d', strtotime( $reportDate2 . ' -1 day' ) );
+		$date_where_close = array('createdOn >='=>$fromDate);
 		// $date_where_all = array('createdOn >='=>$reportDate." 00:00:00",'createdOn <='=>$reportDate." 23:59:59");
 		$date_where_all = $date_where;
 		$productData = $this->db->select('*')->from('product_master')->get()->result();
@@ -1136,6 +1144,7 @@ $data['query']=$this->db->last_query();
 			//echo '<pre>'; print_r($ofc);
 			foreach($productData as $key=>$product){
 				$closingStockValue = 0;
+				$closingStockValue_sum_cal = 0;
 				$salesValueOne = 0;
 				$salesValueAll = 0;
 				$mintValueOne = 0;
@@ -1143,8 +1152,6 @@ $data['query']=$this->db->last_query();
 				
 					// echo $table_name; 
 					/*$closeStockData = $this->db->select('net_stock as netStock')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_one)->order_by('history_id','DESC')->limit('1')->get();
-				//	$closingStockValue = $closingStockValue + $closeStockData->row()->netStock;
-				//	echo $this->db->last_query().'<br/>';
 					if($closeStockData->num_rows() > '0'){
 						$closingStockValue = $closingStockValue + $closeStockData->row()->netStock;
 					}
@@ -1155,8 +1162,40 @@ $data['query']=$this->db->last_query();
 					}*/
 					$closeStockData = $this->db->select('net_stock as netStock')->from($table_name)->where(array('product_id'=>$product->product_id,'createdOn <=' => $toDate))->order_by('history_id','DESC')->limit('1')->get()->row();
 					$closingStockValue = $closingStockValue + $closeStockData->netStock;
-					if($ofc->office_operation_type == "showroom"){
+				//	$closingStockValue = $closingStockValue + $closeStockData->row()->netStock;
+				/*	$closeStockData = $this->db->select('current_stock as netStock')->from($table_name)->where(array('product_id'=>$product->product_id,'createdOn >='=>$fromDate))->order_by('history_id','ASC')->limit('1')->get();
+				//	echo $this->db->last_query();
+					if($closeStockData->num_rows() > '0'){
+						$closingStockValue = $closingStockValue + $closeStockData->row()->netStock;
+					}
+					else{
+						//$closeStockData = $this->db->select('net_stock as netStock')->from($table_name)->where(array('product_id'=>$product->product_id,'net_stock >= '=> '0','createdOn <= '=>$reportDate." 23:59:59"))->order_by('history_id','DESC')->limit('1')->get()->row();
+						$closeStockData = $this->db->select('net_stock as netStock')->from($table_name)->where(array('product_id'=>$product->product_id))->order_by('history_id','DESC')->limit('1')->get()->row();
+						$closingStockValue = $closingStockValue + $closeStockData->netStock;
+					}
+					*/
+					// sales Stock Value one Date
+				/*	$oneSaleData = $this->db->select('sum(transfer_stock) as sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_one)->where_in('type_value',array('customer','BackDateInvoice'))->get()->row();
+					$oneSaleDataValue = $oneSaleData->sales_data;
+				//	echo $this->db->last_query().'<br/>';
+					// deleted sales Stock Value
+					$deletedOneSaleData = $this->db->select('sum(received_stock) as deleted_sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_one)->where_in('type_value',array('Back Date Invoice Deleted','Invoice Deleted'))->get()->row();
+					$deletedOneSaleDataValue = $deletedOneSaleData->deleted_sales_data;
 					
+					$salesValueOne = $salesValueOne + $oneSaleDataValue - $deletedOneSaleDataValue;
+					
+					// sales Stock Value upto Date
+					$allSaleData = $this->db->select('sum(transfer_stock) as sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('customer','BackDateInvoice'))->get()->row();
+					$allSaleDataValue = $allSaleData->sales_data;
+					// echo $this->db->last_query().'<br/>';
+					// deleted sales Stock Value
+					$deletedAllSaleData = $this->db->select('sum(received_stock) as deleted_sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('Back Date Invoice Deleted','Invoice Deleted'))->get()->row();
+					$deletedAllSaleDataValue = $deletedAllSaleData->deleted_sales_data;
+					*/
+					$same_day_delete=0;
+					if($ofc->office_operation_type == "showroom"){
+					$invoice_serial_table_name = "invoice_showroom_product_serial_number_".$ofc->office_id;
+						$invoice_product_table_name = "invoice_showroom_product_".$ofc->office_id;
 						// sales Stock Value one Date
 						$oneSaleData = $this->db->select('sum(his.transfer_stock) as sales_data')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id))->where($in_date_where_one)->where_in('his.type_value',array('customer','BackDateInvoice'))->get()->row();
 						$oneSaleDataValue = $oneSaleData->sales_data;
@@ -1169,12 +1208,35 @@ $data['query']=$this->db->last_query();
 						$salesValueOne = $salesValueOne + $oneSaleDataValue - $deletedOneSaleDataValue;
 						
 						// sales Stock Value upto Date
-						$allSaleData = $this->db->select('sum(his.transfer_stock) as sales_data')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id))->where($in_date_where)->where_in('his.type_value',array('customer','BackDateInvoice'))->get()->row();
+						/*$allSaleData = $this->db->select('sum(his.transfer_stock) as sales_data')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id))->where($in_date_where)->where_in('his.type_value',array('customer','BackDateInvoice'))->get()->row();
 						$allSaleDataValue = $allSaleData->sales_data;
 						// echo $this->db->last_query().'<br/>';
 						// deleted sales Stock Value
 						$deletedAllSaleData = $this->db->select('sum(his.received_stock) as deleted_sales_data')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id))->where($in_date_where)->where_in('his.type_value',array('Back Date Invoice Deleted','Invoice Deleted'))->get()->row();
-						$deletedAllSaleDataValue = $deletedAllSaleData->deleted_sales_data;
+						$deletedAllSaleDataValue = $deletedAllSaleData->deleted_sales_data;*/
+						
+						
+						
+						$saleData_same_day_delete = $this->db->select('sum(his.transfer_stock) as sales_data')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id,'is_deleted'=>'1'))->where($in_date_where)->where_in('his.type_value',array('customer','BackDateInvoice'))->get()->row();
+						if($saleData_same_day_delete->sales_data!=NULL)
+						{
+							$same_day_delete=$saleData_same_day_delete->sales_data;
+						}
+							
+						//echo $same_day_delete."<br>";
+						
+						/*$allSaleData = $this->db->select('sum(transfer_stock) as sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('customer','BackDateInvoice'))->get()->row();
+						$allSaleDataValue = $allSaleData->sales_data;
+						
+						// deleted sales Stock Value
+						$deletedAllSaleData = $this->db->select('sum(received_stock) as deleted_sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('Back Date Invoice Deleted','Invoice Deleted'))->get()->row();
+						$deletedAllSaleDataValue = $deletedAllSaleData->deleted_sales_data;*/
+						
+						
+						$allSaleData=$this->db->query("select count(invoice_product_serial_number_id) as sales_data from ".$invoice_serial_table_name." as inser left join ".$invoice_product_table_name." as invpro on inser.invoice_product_id=invpro.invoice_product_id left join ".$invoice_table_name." as ins on inser.invoice_id=ins.invoice_id where product_id='".$product->product_id."' and inser.createdOn >='".$fromDate."' and inser.createdOn <='".$toDate."' group by product_id" )->row();
+					
+						$allSaleDataValue = $allSaleData->sales_data-$same_day_delete;
+						//$closingStockValue = $closingStockValue + $same_day_delete;
 						
 					}
 					else if($ofc->office_operation_type == "store"){
@@ -1198,6 +1260,7 @@ $data['query']=$this->db->last_query();
 						
 					}
 					
+					
 					$salesValueAll = $salesValueAll + $allSaleDataValue - $deletedAllSaleDataValue;
 					
 					// vendor Stock Value one Date
@@ -1206,6 +1269,8 @@ $data['query']=$this->db->last_query();
 					
 				//	echo $this->db->last_query().'<br/>';
 					//echo $this->db->last_query();
+					
+					
 					
 					// vendor Stock Value upto Date
 					$allMintData = $this->db->select('sum(received_stock) as mint_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('vendor','store','showroom'))->get()->row();
@@ -1221,8 +1286,30 @@ $data['query']=$this->db->last_query();
 					{
 						$mintValueAll = $mintValueAll + $allMintData->mint_data;
 					} */
-					
-					$mintValueAll = $mintValueAll + $allMintData->mint_data - $trans_allMintData->trans_data;
+					//print_r($allMintData);
+					if(($allMintData->mint_data<=0 || $allMintData->mint_data==''))
+						{
+							//$allMintData = $this->db->select('sum(received_stock) as mint_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where(array('createdOn <'=>$fromDate))->where_in('type_value',array('vendor','store','showroom'))->group_by('product_id')->having('sum(received_stock) >0', NULL, FALSE)->order_by('createdOn','desc')->get()->row();
+						//	$allMintData = $this->db->select('current_stock as mint_data')->from($table_name)->where(array('product_id'=>$product->product_id,'createdOn >='=>$fromDate))->order_by('history_id','ASC')->limit('1')->get()->row();
+							if(empty($allMintData)){
+							//	$allMintData = $this->db->select('net_stock as mint_data')->from($table_name)->where(array('product_id'=>$product->product_id))->order_by('history_id','DESC')->limit('1')->get()->row();
+							}
+							//$mintValueAll = $mintValueAll + $allMintData->mint_data;
+							//$openingStockValue = $openingStockValue + $allMintData->mint_data ;
+							//echo $this->db->last_query();
+							//$trans_allMintData = $this->db->select('sum(transfer_stock) as trans_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where("createdOn LIKE '".$fromDate."%'")->where_in('type_value',array('vendor','store','showroom'))->get()->row();
+							//$mintValueAll = $allMintData->mint_data - $trans_allMintData->trans_data;;
+						//	$mintValueAll = $mintValueAll + $closingStockValue + $salesValueAll;
+						}
+						else if(($allMintData->mint_data - $trans_allMintData->trans_data)<0)
+						{
+						//	$mintValueAll = $mintValueAll + $closingStockValue + $salesValueAll;
+						}
+					//else
+					//{
+						//echo 'else'+$same_day_delete;
+						$mintValueAll = $mintValueAll + $allMintData->mint_data - $trans_allMintData->trans_data;
+					//}
 					
 					if($mintValueAll < 0){
 						$mintValueAll = 0;
@@ -1231,9 +1318,12 @@ $data['query']=$this->db->last_query();
 					if($closingStockValue == '0' && $salesValueOne == '0' && $salesValueAll == '0' && $mintValueOne == '0' && $mintValueAll =='0')
 					{
 						continue;
+						
 					}
 					else{
-						$openingData[$ofc->office_id][$product->product_id] = array('closing_stock'=>$closingStockValue,'sales_stock_one'=>$salesValueOne,'sales_stock_all'=>$salesValueAll,'mint_stock_one'=>$mintValueOne,'mint_stock_all'=>$mintValueAll);
+						
+						
+						$openingData[$ofc->office_id][$product->product_id] = array('closing_stock'=>$closingStockValue,'sales_stock_one'=>$salesValueOne,'sales_stock_all'=>$salesValueAll,'mint_stock_one'=>$mintValueOne,'mint_stock_all'=>$mintValueAll,'closing_stock_sum_cal'=>$closingStockValue_sum_cal);
 					}
 					
 				//	echo $this->db->last_query().'<br/>';
@@ -1358,7 +1448,260 @@ $data['query']=$this->db->last_query();
 		
 		
 	}
-public function _get_all_record_stock_transfer_details_to_by_join($tableNameSTOCKRECEIPT,$office_operation_type,$office_id,$fromDate,$toDate){
+
+	public function _get_sold_and_inventory_report_new($reportDate,$fromDate,$toDate,$office_ids,$regional_ids)
+	{
+		$date_where = array('createdOn >='=>$fromDate,'createdOn <='=>$toDate);
+		$his_date_where = array('his.createdOn >='=>$fromDate,'his.createdOn <='=>$toDate);
+		$in_date_where = array('inv.createdOn >='=>$fromDate,'inv.createdOn <='=>$toDate);
+		if(empty($office_ids)){
+			if(empty($regional_ids))
+			{
+				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->get()->result();
+			}
+			else
+			{
+				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where("office_id !=",1)->where_in('regional_store_id',$regional_ids)->get()->result();
+			}
+		}
+		else{
+			$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where_in('office_id',$office_ids)->get()->result();
+		}
+	
+		$ofcDatas = $officeDatas;
+		$totalCost = 0;
+		$date_where_one = " createdOn LIKE '".$reportDate."%'";
+	//	echo $date_where_one;
+		$in_date_where_one = " inv.createdOn LIKE '".$reportDate."%'";
+		$report_Date = date( 'Y-m-d', strtotime( $reportDate2 . ' -1 day' ) );
+		$date_where_close = array('createdOn >='=>$fromDate);
+		// $date_where_all = array('createdOn >='=>$reportDate." 00:00:00",'createdOn <='=>$reportDate." 23:59:59");
+		$date_where_all = $date_where;
+		$productData = $this->db->select('*')->from('product_master')->get()->result();
+		
+		$openingData = array();
+		$productSaleData = array();
+		
+		// print_r($ofcDatas); // die;
+		foreach($ofcDatas as $ofc)
+		{
+			$table_name = "inventory_office_history_".$ofc->office_id;
+			if($ofc->office_operation_type == "showroom"){
+				$invoice_table_name = "invoice_showroom_".$ofc->office_id;
+			}
+			//echo '<pre>'; print_r($ofc);
+			foreach($productData as $key=>$product){
+				$openingStockValue = 0;
+				$closingStockValue = 0;
+				$closingStockValue_sum_cal = 0;
+				$salesValueOne = 0;
+				$salesValueAll = 0;
+				$mintValueOne = 0;
+				$mintValueAll = 0;
+				
+					
+					$closeStockData = $this->db->select('net_stock as netStock')->from($table_name)->where(array('product_id'=>$product->product_id,'createdOn <=' => $toDate))->order_by('history_id','DESC')->limit('1')->get()->row();
+					$closingStockValue = $closingStockValue + $closeStockData->netStock;
+					
+					
+					$openDatas = $this->db->select('*')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where)->get()->result();
+					
+					// opening Stock Value 
+					$openStockData = $this->db->select('current_stock as currentStock')->from($table_name)->where(array('product_id'=>$product->product_id,'createdOn >='=>$fromDate))->order_by('history_id','ASC')->limit('1')->get()->row();
+					if(empty($openStockData)){
+						$openStockData = $this->db->select('net_stock as currentStock')->from($table_name)->where(array('product_id'=>$product->product_id))->order_by('history_id','DESC')->limit('1')->get()->row();
+					}
+					$openingStockValue = $openingStockValue + $openStockData->currentStock ;
+				
+					
+					$same_day_delete=0;
+					$add_in_sale=0;
+					if($ofc->office_operation_type == "showroom")
+					{
+							$invoice_serial_table_name = "invoice_showroom_product_serial_number_".$ofc->office_id;
+						$invoice_product_table_name = "invoice_showroom_product_".$ofc->office_id;
+					$saleData_same_day_delete = $this->db->select('sum(his.transfer_stock) as sales_data')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id,'is_deleted'=>'1'))->where($in_date_where)->where_in('his.type_value',array('customer','BackDateInvoice'))->get()->row();
+					if($saleData_same_day_delete->sales_data!=NULL)
+					{
+						$same_day_delete=$saleData_same_day_delete->sales_data;
+					}
+				$saleData_sold_deleted_leter = $this->db->select('GROUP_CONCAT(his.transaction_number) as all_transaction')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id,'is_deleted'=>'1'))->where($in_date_where)->where_in('his.type_value',array('customer','BackDateInvoice'))->get()->row();
+				
+					if($saleData_sold_deleted_leter->all_transaction!=NULL)
+					{
+					$stockdelete_letter = $this->db->select('sum(received_stock) as add_in_sale')->from($table_name)->where(array('product_id'=>$product->product_id))->where('createdOn >',$toDate)->where_in('type_value',array('Back Date Invoice Deleted','Invoice Deleted'))->where_in('transaction_number',explode(",",$saleData_sold_deleted_leter->all_transaction))->get()->row();
+				//	print_r($stockdelete_letter);
+						if($stockdelete_letter->add_in_sale!='')
+						{
+							$add_in_sale=$stockdelete_letter->add_in_sale;
+							$same_day_delete=$same_day_delete-$add_in_sale;
+						}
+					}
+					}
+					
+					$stockInData = $this->db->select('sum(received_stock) as stock_in_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where)->where_in('type_value',array('vendor','store','showroom','Back Date Invoice Deleted','Invoice Deleted'))->get()->row();
+					$stockInValue = ($stockInData->stock_in_data != '') ?  $stockInData->stock_in_data -$same_day_delete : 0;
+					
+					if($ofc->office_operation_type == "showroom"){
+				
+						
+						$oneSaleData = $this->db->select('sum(his.transfer_stock) as sales_data')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id))->where($in_date_where_one)->where_in('his.type_value',array('customer','BackDateInvoice'))->get()->row();
+						$oneSaleDataValue = $oneSaleData->sales_data;
+						
+					
+						$deletedOneSaleData = $this->db->select('sum(his.received_stock) as deleted_sales_data')->from($table_name.' as his')->join($invoice_table_name.' as inv','transaction_number=invoice_number')->where(array('his.product_id'=>$product->product_id))->where($in_date_where_one)->where_in('his.type_value',array('Back Date Invoice Deleted','Invoice Deleted'))->get()->row();
+						$deletedOneSaleDataValue = $deletedOneSaleData->deleted_sales_data;
+						
+						$salesValueOne = $salesValueOne + $oneSaleDataValue - $deletedOneSaleDataValue;
+						
+						
+						$allSaleData=$this->db->query("select count(invoice_product_serial_number_id) as sales_data from ".$invoice_serial_table_name." as inser left join ".$invoice_product_table_name." as invpro on inser.invoice_product_id=invpro.invoice_product_id left join ".$invoice_table_name." as ins on inser.invoice_id=ins.invoice_id where product_id='".$product->product_id."' and inser.createdOn >='".$fromDate."' and inser.createdOn <='".$toDate."' group by product_id" )->row(); 
+					
+						$allSaleDataValue = $allSaleData->sales_data-$same_day_delete;
+						$deletedAllSaleDataValue = 0;
+						
+					}
+					else if($ofc->office_operation_type == "store"){
+						// sales Stock Value one Date
+						$oneSaleData = $this->db->select('sum(transfer_stock) as sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_one)->where_in('type_value',array('customer','BackDateInvoice'))->get()->row();
+						$oneSaleDataValue = $oneSaleData->sales_data;
+					//	echo $this->db->last_query().'<br/>';
+						// deleted sales Stock Value
+						$deletedOneSaleData = $this->db->select('sum(received_stock) as deleted_sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_one)->where_in('type_value',array('Back Date Invoice Deleted','Invoice Deleted'))->get()->row();
+						$deletedOneSaleDataValue = $deletedOneSaleData->deleted_sales_data;
+						
+						$salesValueOne = $salesValueOne + $oneSaleDataValue - $deletedOneSaleDataValue;
+						
+						// sales Stock Value upto Date
+						$allSaleData = $this->db->select('sum(transfer_stock) as sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('customer','BackDateInvoice'))->get()->row();
+						$allSaleDataValue = $allSaleData->sales_data;
+						// echo $this->db->last_query().'<br/>';
+						// deleted sales Stock Value
+						$deletedAllSaleData = $this->db->select('sum(received_stock) as deleted_sales_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('Back Date Invoice Deleted','Invoice Deleted'))->get()->row();
+						$deletedAllSaleDataValue = $deletedAllSaleData->deleted_sales_data;
+						
+					}
+					
+					
+					$salesValueAll = $salesValueAll + $allSaleDataValue - $deletedAllSaleDataValue;
+					
+					
+					
+					$buyBackData = $this->db->select('sum(received_stock) as buyback_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where)->where_in('type_value',array('Buy Back'))->get()->row();
+					$buybackValue = $buybackValue + $buyBackData->buyback_data;			
+					$stockOutData = $this->db->select('sum(transfer_stock) as stock_out_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where)->where_in('type_value',array('store','showroom'))->get()->row();
+					$stockOutValue = ($stockOutData->stock_out_data != '') ? $stockOutValue + $stockOutData->stock_out_data : $stockOutValue + 0;
+					
+					// vendor Stock Value one Date
+					$oneMintData = $this->db->select('sum(received_stock) as mint_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_one)->where_in('type_value',array('vendor','store','showroom'))->get()->row();
+					$mintValueOne = $mintValueOne + $oneMintData->mint_data;
+					
+				//	echo $this->db->last_query().'<br/>';
+					//echo $this->db->last_query();
+					// opening Stock Value 
+					
+					
+					// vendor Stock Value upto Date
+					$allMintData = $this->db->select('sum(received_stock) as mint_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('vendor','store','showroom'))->get()->row();
+					
+					// vendor Stock Value upto Date
+					$trans_allMintData = $this->db->select('sum(transfer_stock) as trans_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where_all)->where_in('type_value',array('vendor','store','showroom'))->get()->row();
+					
+				
+						//echo $openStockData->currentStock." ".$stockInValue." ".$buyBackData->buyback_data." ".$stockOutData->stock_out_data.'<br/>';
+						
+						$mintValueAll =  $openStockData->currentStock  + $stockInValue   + $buyBackData->buyback_data - (($stockOutData->stock_out_data != '') ?  $stockOutData->stock_out_data : 0);
+					
+					
+					if($mintValueAll < 0){
+						$mintValueAll = 0;
+					}
+					
+					if($closingStockValue == '0' && $salesValueOne == '0' && $salesValueAll == '0' && $mintValueOne == '0' && $mintValueAll =='0')
+					{
+						continue;
+						
+					}
+					else{
+						
+						
+						$openingData[$ofc->office_id][$product->product_id] = array('closing_stock'=>$closingStockValue,'sales_stock_one'=>$salesValueOne,'sales_stock_all'=>$salesValueAll,'mint_stock_one'=>$mintValueOne,'mint_stock_all'=>$mintValueAll,'closing_stock_sum_cal'=>$closingStockValue_sum_cal);
+					}
+					
+				
+			}
+			
+		
+		}
+	
+		return $openingData;
+	}
+	
+	public function _get_sales_all_report($reportDate,$fromDate,$toDate,$office_ids,$regional_ids)
+	{
+		$date_where = array('inser.createdOn >='=>$fromDate,'inser.createdOn <='=>$toDate);
+		$his_date_where = array('his.createdOn >='=>$fromDate,'his.createdOn <='=>$toDate);
+		$in_date_where = array('inv.createdOn >='=>$fromDate,'inv.createdOn <='=>$toDate);
+		if(empty($office_ids)){
+			if(empty($regional_ids))
+			{
+				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where("office_operation_type",'showroom')->get()->result();
+			}
+			else
+			{
+				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where("office_operation_type",'showroom')->where_in('regional_store_id',$regional_ids)->get()->result();
+			}
+		}
+		else{
+			$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where_in('office_id',$office_ids)->get()->result();
+		}
+		
+		$ofcDatas = $officeDatas;
+		$totalCost = 0;
+		$date_where_one = " createdOn LIKE '".$reportDate."%'";
+	//	echo $date_where_one;
+		$in_date_where_one = " inv.createdOn LIKE '".$reportDate."%'";
+		$report_Date = date( 'Y-m-d', strtotime( $reportDate2 . ' -1 day' ) );
+		$date_where_close = array('createdOn >='=>$fromDate);
+		// $date_where_all = array('createdOn >='=>$reportDate." 00:00:00",'createdOn <='=>$reportDate." 23:59:59");
+		$date_where_all = $date_where;
+		$productData = $this->db->select('*')->from('product_master')->get()->result();
+		
+		$sales = array();
+		$productSaleData = array();
+		
+		// print_r($ofcDatas); // die;
+		foreach($ofcDatas as $ofc)
+		{
+			$table_name = "inventory_office_history_".$ofc->office_id;
+			
+				$invoice_table_name = "invoice_showroom_".$ofc->office_id;
+				$invoice_serial_table_name = "invoice_showroom_product_serial_number_".$ofc->office_id;
+				$invoice_product_table_name = "invoice_showroom_product_".$ofc->office_id;
+			
+			//echo '<pre>'; print_r($ofc);
+			foreach($productData as $key=>$product){
+				$closingStockValue = 0;
+				$closingStockValue_sum_cal = 0;
+				$salesValueOne = 0;
+				$salesValueAll = 0;
+				$mintValueOne = 0;
+				$mintValueAll = 0;
+				
+					$result_data=$this->db->query("select count(invoice_product_serial_number_id) as cnt from ".$invoice_serial_table_name." as inser left join ".$invoice_product_table_name." as invpro on inser.invoice_product_id=invpro.invoice_product_id left join ".$invoice_table_name." as ins on inser.invoice_id=ins.invoice_id where ins.is_deleted=0 and product_id='".$product->product_id."' and inser.createdOn >='".$fromDate."' and inser.createdOn <='".$toDate."' group by product_id" )->row();
+					
+						$sales[$ofc->office_id][$product->product_id] = array('total_sales'=>$result_data->cnt);
+					
+				
+			}
+		
+		}
+		
+		// echo '<pre>';
+		// print_r($openingData); echo "</pre>"; //die;
+		return $sales;
+	}
+	public function _get_all_record_stock_transfer_details_to_by_join($tableNameSTOCKRECEIPT,$office_operation_type,$office_id,$fromDate,$toDate){
 		 $tableNameSTOCKTRANSPro='inventory_'.$office_operation_type.'_stock_transfer_product_'.$office_id;	
 			
 		
@@ -1613,6 +1956,8 @@ public function _get_all_record_stock_transfer_details_to_by_join($tableNameSTOC
 											{
 												
 												$in_transit_product=$in_transit_product+$product_transfer->stock_transfer_product_quantity;
+												
+					
 											}
 								}
 								else
@@ -1634,12 +1979,104 @@ public function _get_all_record_stock_transfer_details_to_by_join($tableNameSTOC
 					}
 					
 					
+					
+		
+		$todate_x = date( 'Y-m-d', strtotime( $fromDate . ' -1 day' ) );			
+		/*$this->db->select('trans_table.stock_transfer_number,trans_table.stock_transfer_date,trans_table.stock_transfer_narration,trans_table.stock_transfer_status,trans_table.stock_transfer_id, trans_table.stock_transfer_to_office_id,trans_table.authorized_date,ofc_mstr.office_name,ofc_mstr.office_address,ofc_mstr.city_id,trans_table.access_level_status,ofc_mstr.office_operation_type,
+		ofc_mstr.district_id,ofc_mstr.state_id,trans_table.added_by')->from($tableNameSTOCKRECEIPT.' as trans_table');
+		$this->db->join('office_master as ofc_mstr','ofc_mstr.office_id=trans_table.stock_transfer_to_office_id');
+		$this->db->where(array('trans_table.authorized_date >=' => '2015-10-01','trans_table.authorized_date <=' => $todate_x));
+		$stock_transfer_st_sh=$this->db->get()->result();
+	
+		$transfer_product_table='inventory_'.$ofc->office_operation_type.'_stock_transfer_product_'.$ofc->office_id;	
+		$in_transit_product_x=0;				
+		foreach($stock_transfer_st_sh as $Stock_receipt_details)
+		{
+										
+			$recipet_table='inventory_'.$Stock_receipt_details->office_operation_type.'_stock_receipt_'.$Stock_receipt_details->stock_transfer_to_office_id;
+		
+			$receipt_data=$this->db->query("select * from ".$recipet_table." where stock_transfer_number='".$Stock_receipt_details->stock_transfer_number."' and authorized_date > '".$todate_x."' order by stock_receipt_id desc limit 1")->row();
+			
+			if(!empty($receipt_data))
+			{
+				
+					$productList=$this->db->get_where($transfer_product_table,array('stock_transfer_id'=>$Stock_receipt_details->stock_transfer_id,'product_id'=>$product->product_id))->result();
+			foreach($productList as $product_transfer)
+						{
+							
+							$in_transit_product_x=$in_transit_product_x+$product_transfer->stock_transfer_product_quantity;
+							
+						}
+			}
+			else
+			{
+				$receipt_data=$this->db->query("select * from ".$recipet_table." where stock_transfer_number='".$Stock_receipt_details->stock_transfer_number."' order by stock_receipt_id desc limit 1")->row();
+				
+					if(empty($receipt_data) || (!empty($receipt_data) && $receipt_data->authorized_date==''))
+					{
+						
+						$productList=$this->db->get_where($transfer_product_table,array('stock_transfer_id'=>$Stock_receipt_details->stock_transfer_id,'product_id'=>$product->product_id))->result();
+						foreach($productList as $product_transfer)
+						{
+							
+							$in_transit_product_x=$in_transit_product_x+$product_transfer->stock_transfer_product_quantity;
+						}
+					}	
+			}
+
+								
+		}
+		$this->db->select('trans_table.stock_transfer_number,trans_table.stock_transfer_date,trans_table.stock_transfer_narration,trans_table.stock_transfer_status,trans_table.stock_transfer_id, trans_table.stock_transfer_to_office_id,trans_table.authorized_date,ofc_mstr.office_name,ofc_mstr.office_address,ofc_mstr.city_id,trans_table.access_level_status,ofc_mstr.office_operation_type,
+		ofc_mstr.district_id,ofc_mstr.state_id,trans_table.added_by')->from($tableNameSTOCKRECEIPT.' as trans_table');
+		$this->db->join('office_master as ofc_mstr','ofc_mstr.office_id=trans_table.stock_transfer_to_office_id');
+		$this->db->where(array('trans_table.authorized_date >=' => '2015-10-01','trans_table.authorized_date <=' => $toDate));
+		$stock_transfer_st_sh=$this->db->get()->result();
+	//echo $this->db->last_query();
+				$transfer_product_table='inventory_'.$ofc->office_operation_type.'_stock_transfer_product_'.$ofc->office_id;	
+				$in_transit_product_y=0;				
+					foreach($stock_transfer_st_sh as $Stock_receipt_details){
+										
+								$recipet_table='inventory_'.$Stock_receipt_details->office_operation_type.'_stock_receipt_'.$Stock_receipt_details->stock_transfer_to_office_id;
+							
+								$receipt_data=$this->db->query("select * from ".$recipet_table." where stock_transfer_number='".$Stock_receipt_details->stock_transfer_number."' and authorized_date > '".$toDate."' order by stock_receipt_id desc limit 1")->row();
+								if(!empty($receipt_data))
+								{
+										$productList=$this->db->get_where($transfer_product_table,array('stock_transfer_id'=>$Stock_receipt_details->stock_transfer_id,'product_id'=>$product->product_id))->result();
+								foreach($productList as $product_transfer)
+											{
+												
+												$in_transit_product_y=$in_transit_product_y+$product_transfer->stock_transfer_product_quantity;
+											}
+								}
+								else
+								{
+									$receipt_data=$this->db->query("select * from ".$recipet_table." where stock_transfer_number='".$Stock_receipt_details->stock_transfer_number."' order by stock_receipt_id desc limit 1")->row();
+									
+										if(empty($receipt_data) || (!empty($receipt_data) && $receipt_data->authorized_date==''))
+										{
+											$productList=$this->db->get_where($transfer_product_table,array('stock_transfer_id'=>$Stock_receipt_details->stock_transfer_id,'product_id'=>$product->product_id))->result();
+											foreach($productList as $product_transfer)
+											{
+												
+												$in_transit_product_y=$in_transit_product_y+$product_transfer->stock_transfer_product_quantity;
+											}
+										}	
+								}
+
+								
+					}
+					
+					
+					
+					*/
+					
+					
 					$stockInData_vendor = $this->db->select('sum(received_stock) as stock_in_data')->from($table_name)->where(array('product_id'=>$product->product_id))->where($date_where)->where_in('type_value',array('vendor'))->get()->row();
 					
 					$stockInData_vendorValue = ($stockInData_vendor->stock_in_data != '') ?  $stockInData_vendor->stock_in_data : 0;
 					
 					
-				if($closingStockValue == '0' && $salesValueOne == '0' && $salesValueAll == '0' && $mintValueOne == '0' && $mintValueAll =='0' && $in_transit_product==0 && $openStockData_value=='0' && $stockInValue=='0' && $stockout_data=='0')
+				if($closingStockValue == '0' && $salesValueOne == '0' && $salesValueAll == '0' && $mintValueOne == '0' && $mintValueAll =='0' && $in_transit_product==0 && $openStockData_value=='0' && $stockInValue=='0' && $stockout_data=='0' )
 					{
 						
 						/* $stock_out=($stockOutData->stock_out_data != '') ?  $stockOutData->stock_out_data : 0;
@@ -1659,6 +2096,10 @@ public function _get_all_record_stock_transfer_details_to_by_join($tableNameSTOC
 			
 		
 		}
+	$openingData['ofcDatas']=$ofcDatas;
+	$openingData['todate_x']=$todate_x;
+	$openingData['toDate']=$toDate;
+	
 	
 		return $openingData;
 	}
@@ -1709,69 +2150,5 @@ public function _get_all_record_stock_transfer_details_to_by_join($tableNameSTOC
 			}
 		}
 		return $vendorsData;
-	}
-public function _get_sales_all_report($reportDate,$fromDate,$toDate,$office_ids,$regional_ids)
-	{
-		$date_where = array('inser.createdOn >='=>$fromDate,'inser.createdOn <='=>$toDate);
-		$his_date_where = array('his.createdOn >='=>$fromDate,'his.createdOn <='=>$toDate);
-		$in_date_where = array('inv.createdOn >='=>$fromDate,'inv.createdOn <='=>$toDate);
-		if(empty($office_ids)){
-			if(empty($regional_ids))
-			{
-				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where("office_operation_type",'showroom')->get()->result();
-			}
-			else
-			{
-				$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where("office_operation_type",'showroom')->where_in('regional_store_id',$regional_ids)->get()->result();
-			}
-		}
-		else{
-			$officeDatas = $this->db->select('office_id,office_operation_type')->from('office_master as om')->where_in('office_id',$office_ids)->get()->result();
-		}
-		
-		$ofcDatas = $officeDatas;
-		$totalCost = 0;
-		$date_where_one = " createdOn LIKE '".$reportDate."%'";
-	//	echo $date_where_one;
-		$in_date_where_one = " inv.createdOn LIKE '".$reportDate."%'";
-		$report_Date = date( 'Y-m-d', strtotime( $reportDate2 . ' -1 day' ) );
-		$date_where_close = array('createdOn >='=>$fromDate);
-		// $date_where_all = array('createdOn >='=>$reportDate." 00:00:00",'createdOn <='=>$reportDate." 23:59:59");
-		$date_where_all = $date_where;
-		$productData = $this->db->select('*')->from('product_master')->get()->result();
-		
-		$sales = array();
-		$productSaleData = array();
-		
-		// print_r($ofcDatas); // die;
-		foreach($ofcDatas as $ofc)
-		{
-			$table_name = "inventory_office_history_".$ofc->office_id;
-			
-				$invoice_table_name = "invoice_showroom_".$ofc->office_id;
-				$invoice_serial_table_name = "invoice_showroom_product_serial_number_".$ofc->office_id;
-				$invoice_product_table_name = "invoice_showroom_product_".$ofc->office_id;
-			
-			//echo '<pre>'; print_r($ofc);
-			foreach($productData as $key=>$product){
-				$closingStockValue = 0;
-				$closingStockValue_sum_cal = 0;
-				$salesValueOne = 0;
-				$salesValueAll = 0;
-				$mintValueOne = 0;
-				$mintValueAll = 0;
-				
-					$result_data=$this->db->query("select count(invoice_product_serial_number_id) as cnt from ".$invoice_serial_table_name." as inser left join ".$invoice_product_table_name." as invpro on inser.invoice_product_id=invpro.invoice_product_id left join ".$invoice_table_name." as ins on inser.invoice_id=ins.invoice_id where ins.is_deleted=0 and product_id='".$product->product_id."' and inser.createdOn >='".$fromDate."' and inser.createdOn <='".$toDate."' group by product_id" )->row();
-					
-						$sales[$ofc->office_id][$product->product_id] = array('total_sales'=>$result_data->cnt);
-					
-				
-			}
-		
-		}
-		
-		// echo '<pre>';
-		// print_r($openingData); echo "</pre>"; //die;
-		return $sales;
 	}
 }
